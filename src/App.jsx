@@ -111,24 +111,7 @@ export default function App() {
         />
       </Drawer>
       <Layout>
-        <AppHeader>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            {isMobile && (
-              <Button
-                type="text"
-                icon={<MenuOutlined />}
-                onClick={() => setMobileMenuVisible(true)}
-                style={{ marginRight: 16 }}
-              />
-            )}
-            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-              <Badge count={trades.length} showZero>
-                <span>Total Trades</span>
-              </Badge>
-              <span style={{ marginLeft: 16 }}>{user.email}</span>
-            </div>
-          </div>
-        </AppHeader>
+        <AppHeader onToggleMobileMenu={() => setMobileMenuVisible(true)} />
         <Content style={{ margin: 16 }}>
           {view === 'dashboard' && <Dashboard trades={trades} />}
           {view === 'trades' && <TradeTable trades={trades} />}
