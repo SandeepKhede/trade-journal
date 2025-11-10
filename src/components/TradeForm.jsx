@@ -217,32 +217,37 @@ export default function TradeForm() {
       </Modal>
 
       <Form layout="vertical" form={form} onFinish={onFinish} style={{ maxWidth: 800 }}>
-        <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'flex-end' }}>
-         <Space>
-           <Popconfirm
-             title="Reset Database"
-             description="This will delete all trades and resync from Delta Exchange. Are you sure?"
-             onConfirm={resetAndResync}
-             okText="Yes"
-             cancelText="No"
-           >
-             <Button
-               danger
-               icon={<DeleteOutlined spin={isResetting} />}
-               loading={isResetting}
-             >
-               Reset & Resync
-             </Button>
-           </Popconfirm>
+        <div style={{ 
+          marginBottom: 16, 
+          display: 'flex', 
+          justifyContent: 'flex-end',
+          gap: '8px'
+        }}>
+          <Popconfirm
+            title="Reset Database"
+            description="This will delete all trades and resync from Delta Exchange. Are you sure?"
+            onConfirm={resetAndResync}
+            okText="Yes"
+            cancelText="No"
+          >
+            <Button
+              danger
+              icon={<DeleteOutlined spin={isResetting} />}
+              loading={isResetting}
+              style={{ minWidth: 'fit-content' }}
+            >
+              Reset & Resync
+            </Button>
+          </Popconfirm>
           <Button
+            type="primary"
             icon={<SyncOutlined spin={isSyncing} />}
             onClick={syncDeltaTrades}
             loading={isSyncing}
-            style={{ marginBottom: 16 }}
+            style={{ minWidth: 'fit-content' }}
           >
             Sync Delta Exchange Trades
           </Button>
-         </Space>
         </div>
         <TradeRules 
         onChange={(compliance, checkedRules) => {
