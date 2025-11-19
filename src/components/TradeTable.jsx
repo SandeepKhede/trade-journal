@@ -1,13 +1,164 @@
-import React, { useState } from 'react'
-import { Table, Tag, Image, Modal, Space, Button, Typography, Card, Statistic } from 'antd'
-import { ExpandAltOutlined } from '@ant-design/icons'
+import React, { useState, useEffect } from 'react'
+import { Table, Tag, Image, Modal, Space, Button, Typography, Card, Statistic, Upload, Progress, message } from 'antd'
+import { ExpandAltOutlined, EditOutlined, SaveOutlined, CloseOutlined, UploadOutlined } from '@ant-design/icons'
+import TradeRules from './TradeRules'
+import { updateTrade } from '../firebase'
 
-export default function TradeTable({ trades = [] }) {
+export default function TradeTable({ trades = [], onTradeUpdate }) {
   const [selectedTrade, setSelectedTrade] = useState(null)
+  const [isEditMode, setIsEditMode] = useState(false)
+  const [rulesCompliance, setRulesCompliance] = useState(0)
+  const [rulesChecked, setRulesChecked] = useState({})
+  const [screenshotFileList, setScreenshotFileList] = useState([])
+  const [isSaving, setIsSaving] = useState(false)
 
   // Function to open trade details modal
   const showTradeDetails = (trade) => {
     setSelectedTrade(trade)
+    setIsEditMode(false)
+    // Initialize rules from trade data
+    if (trade.rulesChecked) {
+      setRulesChecked(trade.rulesChecked)
+      setRulesCompliance(trade.rulesCompliance || 0)
+    } else {
+      setRulesChecked({})
+      setRulesCompliance(0)
+    }
+    // Initialize screenshot file list from existing screenshots
+    if (trade.screenshotUrls && trade.screenshotUrls.length > 0) {
+      setScreenshotFileList(
+        trade.screenshotUrls.map((url, index) => ({
+          uid: `existing-${index}`,
+          name: `screenshot-${index + 1}.jpg`,
+          status: 'done',
+          url: url,
+        }))
+      )
+    } else if (trade.screenshots && trade.screenshots.length > 0) {
+      // Handle base64 screenshots
+      setScreenshotFileList(
+        trade.screenshots.map((screenshot, index) => ({
+          uid: `existing-${index}`,
+          name: `screenshot-${index + 1}.jpg`,
+          status: 'done',
+          url: screenshot,
+        }))
+      )
+    } else {
+      setScreenshotFileList([])
+    }
+  }
+
+  // Reset edit mode when modal closes
+  useEffect(() => {
+    if (!selectedTrade) {
+      setIsEditMode(false)
+      setRulesChecked({})
+      setRulesCompliance(0)
+      setScreenshotFileList([])
+    }
+  }, [selectedTrade])
+
+  const handleSave = async () => {
+    if (!selectedTrade || !selectedTrade.id) {
+      message.error('Cannot save: Trade ID is missing')
+      return
+    }
+
+    setIsSaving(true)
+    try {
+      // Convert new screenshots to base64
+      const newScreenshots = []
+      const existingScreenshotUrls = []
+      
+      for (const file of screenshotFileList) {
+        if (file.status === 'done' && file.url) {
+          // Existing screenshot - keep base64 data URLs
+          if (file.url.startsWith('data:')) {
+            // Base64 data URL from existing screenshot - keep as is
+            existingScreenshotUrls.push(file.url)
+          } else if (file.url.startsWith('http')) {
+            // Old Storage URL - we'll skip these as we can't convert them to base64
+            // But we'll keep them for backward compatibility display
+            console.warn('Skipping Storage URL (cannot convert to base64):', file.url)
+          }
+        } else if (file.originFileObj) {
+          // New file to upload - convert to base64
+          try {
+            const reader = new FileReader()
+            const base64 = await new Promise((resolve, reject) => {
+              reader.onload = (e) => resolve(e.target.result)
+              reader.onerror = reject
+              reader.readAsDataURL(file.originFileObj)
+            })
+            newScreenshots.push(base64)
+          } catch (fileError) {
+            console.error('Error reading file:', fileError)
+            message.warning(`Failed to process one screenshot file: ${file.name || 'unknown'}`)
+          }
+        }
+      }
+
+      // Clean up the rulesChecked object
+      const cleanedRulesChecked = {}
+      Object.entries(rulesChecked).forEach(([key, value]) => {
+        if (value !== undefined) {
+          cleanedRulesChecked[key] = Boolean(value)
+        }
+      })
+
+      // Prepare update data - combine existing and new screenshots
+      const allScreenshots = [...existingScreenshotUrls, ...newScreenshots]
+      const updates = {
+        rulesCompliance: rulesCompliance || 0,
+        rulesChecked: cleanedRulesChecked,
+        screenshots: allScreenshots.length > 0 ? allScreenshots : null,
+        existingScreenshotUrls: existingScreenshotUrls, // For processing in updateTrade
+      }
+
+      // Update the trade
+      await updateTrade(selectedTrade.id, updates)
+      
+      message.success('Trade updated successfully!')
+      setIsEditMode(false)
+      
+      // Notify parent component to refresh trades
+      if (onTradeUpdate) {
+        onTradeUpdate()
+      }
+      
+      // Update local state with new data
+      setSelectedTrade({
+        ...selectedTrade,
+        ...updates,
+        screenshots: allScreenshots, // Update with all screenshots (base64)
+      })
+    } catch (error) {
+      console.error('Error updating trade:', error)
+      let errorMessage = 'Failed to update trade: ' + (error.message || 'Unknown error')
+      
+      // Provide helpful error messages for common issues
+      if (error.message && error.message.includes('Storage')) {
+        errorMessage = error.message + ' Please ensure you are logged in and Firebase Storage rules allow uploads.'
+      } else if (error.message && error.message.includes('CORS')) {
+        errorMessage = 'CORS error: Please check Firebase Storage configuration and security rules.'
+      }
+      
+      message.error({
+        content: errorMessage,
+        duration: 6,
+      })
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleCancelEdit = () => {
+    setIsEditMode(false)
+    // Reset to original trade data
+    if (selectedTrade) {
+      showTradeDetails(selectedTrade)
+    }
   }
   const columns = [
     {
@@ -123,22 +274,25 @@ export default function TradeTable({ trades = [] }) {
       title: 'Screenshots',
       dataIndex: 'screenshots',
       key: 'screenshots',
-      render: (screenshots) => screenshots?.length ? (
-        <Image.PreviewGroup>
-          <Space>
-            {screenshots.map((url, index) => (
-              <Image
-                key={index}
-                src={url}
-                width={50}
-                height={50}
-                style={{ objectFit: 'cover' }}
-                alt={`Trade screenshot ${index + 1}`}
-              />
-            ))}
-          </Space>
-        </Image.PreviewGroup>
-      ) : '-',
+      render: (screenshots, record) => {
+        const allScreenshots = record.screenshotUrls || screenshots || []
+        return allScreenshots.length > 0 ? (
+          <Image.PreviewGroup>
+            <Space>
+              {allScreenshots.map((url, index) => (
+                <Image
+                  key={index}
+                  src={url}
+                  width={50}
+                  height={50}
+                  style={{ objectFit: 'cover' }}
+                  alt={`Trade screenshot ${index + 1}`}
+                />
+              ))}
+            </Space>
+          </Image.PreviewGroup>
+        ) : '-'
+      },
       width: 120,
     },
     {
@@ -173,14 +327,67 @@ export default function TradeTable({ trades = [] }) {
 
       <Modal
         title={`Trade Details - ${selectedTrade?.instrument}`}
-        visible={!!selectedTrade}
-        onCancel={() => setSelectedTrade(null)}
-        width={800}
-        footer={null}
+        open={!!selectedTrade}
+        onCancel={() => {
+          setSelectedTrade(null)
+          setIsEditMode(false)
+        }}
+        width={900}
+        footer={
+          isEditMode ? (
+            <Space>
+              <Button onClick={handleCancelEdit} disabled={isSaving}>
+                Cancel
+              </Button>
+              <Button
+                type="primary"
+                icon={<SaveOutlined />}
+                onClick={handleSave}
+                loading={isSaving}
+              >
+                Save Changes
+              </Button>
+            </Space>
+          ) : (
+            <Button
+              icon={<EditOutlined />}
+              onClick={() => setIsEditMode(true)}
+              type="primary"
+            >
+              Edit Trade
+            </Button>
+          )
+        }
       >
         {selectedTrade && (
           <div style={{ maxHeight: '80vh', overflow: 'auto' }}>
             <Space direction="vertical" size="large" style={{ width: '100%' }}>
+              {/* Trade Rules - Show in edit mode */}
+              {isEditMode && (
+                <>
+                  <TradeRules
+                    onChange={(compliance, checkedRules) => {
+                      const cleanRules = {}
+                      Object.entries(checkedRules).forEach(([key, value]) => {
+                        if (value !== undefined) {
+                          cleanRules[key] = Boolean(value)
+                        }
+                      })
+                      setRulesCompliance(compliance)
+                      setRulesChecked(cleanRules)
+                    }}
+                    initialValues={selectedTrade.rulesChecked || {}}
+                  />
+                  <div style={{ marginBottom: 16 }}>
+                    <div>Rules Compliance:</div>
+                    <Progress
+                      percent={Math.round(rulesCompliance)}
+                      status={rulesCompliance >= 80 ? "success" : rulesCompliance >= 60 ? "normal" : "exception"}
+                    />
+                  </div>
+                </>
+              )}
+
               {/* Trade Statistics */}
               <Card>
                 <Space wrap>
@@ -204,7 +411,7 @@ export default function TradeTable({ trades = [] }) {
                   />
                   <Statistic
                     title="Rules Compliance"
-                    value={selectedTrade.rulesCompliance}
+                    value={isEditMode ? rulesCompliance : (selectedTrade.rulesCompliance || 0)}
                     suffix="%"
                   />
                 </Space>
@@ -245,23 +452,67 @@ export default function TradeTable({ trades = [] }) {
               </Card>
 
               {/* Screenshots */}
-              {selectedTrade.screenshots?.length > 0 && (
-                <Card title="Trade Screenshots">
-                  <Image.PreviewGroup>
-                    <Space wrap>
-                      {selectedTrade.screenshots.map((url, index) => (
-                        <Image
-                          key={index}
-                          src={url}
-                          width={200}
-                          style={{ objectFit: 'cover' }}
-                          alt={`Trade screenshot ${index + 1}`}
-                        />
-                      ))}
-                    </Space>
-                  </Image.PreviewGroup>
-                </Card>
-              )}
+              <Card 
+                title="Trade Screenshots"
+                extra={isEditMode && (
+                  <span style={{ fontSize: '12px', color: '#8c8c8c' }}>
+                    Images auto-compressed (1MB limit)
+                  </span>
+                )}
+              >
+                {isEditMode ? (
+                  <>
+                    <Upload
+                      listType="picture-card"
+                      fileList={screenshotFileList}
+                      onChange={({ fileList }) => setScreenshotFileList(fileList)}
+                      beforeUpload={(file) => {
+                        const isImage = file.type.startsWith('image/')
+                        if (!isImage) {
+                          message.error('You can only upload image files!')
+                          return false
+                        }
+                        const fileSizeMB = file.size / 1024 / 1024
+                        if (fileSizeMB > 5) {
+                          message.warning(`Large image (${fileSizeMB.toFixed(2)}MB) will be compressed automatically`)
+                        }
+                        return false // Prevent auto upload
+                      }}
+                      maxCount={5}
+                    >
+                      {screenshotFileList.length < 5 && (
+                        <div>
+                          <UploadOutlined />
+                          <div style={{ marginTop: 8 }}>Upload</div>
+                        </div>
+                      )}
+                    </Upload>
+                    <div style={{ fontSize: '12px', color: '#8c8c8c', marginTop: 8 }}>
+                      Screenshots stored in Firestore (1MB limit per trade). Images are automatically compressed.
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {(selectedTrade.screenshotUrls?.length > 0 || selectedTrade.screenshots?.length > 0) ? (
+                      <Image.PreviewGroup>
+                        <Space wrap>
+                          {(selectedTrade.screenshotUrls || selectedTrade.screenshots || []).map((url, index) => (
+                            <Image
+                              key={index}
+                              src={url}
+                              width={200}
+                              style={{ objectFit: 'cover' }}
+                              alt={`Trade screenshot ${index + 1}`}
+                            />
+                          ))}
+                        </Space>
+                      </Image.PreviewGroup>
+                    ) : (
+                      <Typography.Text type="secondary">No screenshots added yet</Typography.Text>
+                    )}
+                  </>
+                )}
+              </Card>
 
               {/* Trade Notes */}
               <Card title="Trade Notes">

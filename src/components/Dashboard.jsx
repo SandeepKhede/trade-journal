@@ -262,7 +262,7 @@ export default function Dashboard({ trades = [] }) {
         <Col xs={24} sm={12} md={8} lg={6}>
           <Card>
             <Statistic 
-              title={`Fees Paid (${getTradesCurrency})`}
+              title={`Fees Paid`}
               value={formatCurrency(Math.round(metrics.totalFees), getTradesCurrency)}
 
               precision={4}
@@ -271,7 +271,7 @@ export default function Dashboard({ trades = [] }) {
         </Col>
           <Col xs={24} sm={12} md={8} lg={6}>
             <Card>
-              <Statistic title="Max Drawdown" value={metrics.maxDrawdown} precision={2} valueStyle={{ color: '#cf1322' }} />
+              <Statistic title="Max Drawdown" value={formatCurrency(Math.round(metrics.maxDrawdown) , getTradesCurrency)} valueStyle={{ color: '#cf1322' }} />
             </Card>
           </Col>
           <Col xs={24} sm={12} md={8} lg={6}>

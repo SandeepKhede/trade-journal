@@ -334,7 +334,14 @@ export default function TradeForm() {
 
       <Form.Item 
         name="screenshots" 
-        label="Trade Screenshots"
+        label={
+          <span>
+            Trade Screenshots
+            <span style={{ color: '#ff9800', fontSize: '12px', marginLeft: 8 }}>
+              (Images will be compressed to fit Firestore 1MB limit)
+            </span>
+          </span>
+        }
         valuePropName="fileList"
         getValueFromEvent={e => {
           if (Array.isArray(e)) {
@@ -350,10 +357,11 @@ export default function TradeForm() {
             const isImage = file.type.startsWith('image/');
             if (!isImage) {
               message.error('You can only upload image files!');
+              return false;
             }
             const isLt5M = file.size / 1024 / 1024 < 5;
             if (!isLt5M) {
-              message.error('Image must be smaller than 5MB!');
+              message.warning('Large images will be compressed automatically. Original size: ' + (file.size / 1024 / 1024).toFixed(2) + 'MB');
             }
             // Return false to stop auto upload
             return false;
@@ -361,6 +369,9 @@ export default function TradeForm() {
         >
           <Button icon={<UploadOutlined />}>Upload Setup/Trade Screenshots</Button>
         </Upload>
+        <div style={{ fontSize: '12px', color: '#8c8c8c', marginTop: 4 }}>
+          Note: Screenshots are stored in Firestore (1MB limit per trade). Images are automatically compressed.
+        </div>
       </Form.Item>
 
       <Form.Item name="psychology" label="Trading Psychology">
